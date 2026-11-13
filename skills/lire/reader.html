@@ -259,8 +259,55 @@ article img { max-width: 100%; border-radius: 10px; }
   .topbar .brand span { display: none; }
   .popover { width: calc(100vw - 32px); }
 }
+
+/* Lecteur audio (skill lire-ecouter) */
+body.listen .main { padding-bottom: 110px; }
+.toc-row { display: flex; align-items: flex-start; gap: 2px; }
+.toc-row a { flex: 1; }
+.toc-play {
+  flex: none; width: 26px; height: 26px; margin-top: 2px; border: 0; border-radius: 50%;
+  background: transparent; color: var(--accent); font-size: 11px; line-height: 26px; padding: 0;
+}
+.toc-play:hover { background: var(--accent-soft); }
+.toc-play.playing { background: var(--accent); color: var(--accent-ink); }
+.toc-intro { font-size: 13px; color: var(--muted); padding: 5px 10px; flex: 1; line-height: 1.35; }
+.player {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 15;
+  width: min(820px, calc(100vw - 32px)); display: none;
+  background: var(--paper); border-radius: 16px; box-shadow: var(--shadow); padding: 10px 14px;
+}
+body.listen .player { display: block; }
+.player-row { display: flex; align-items: center; gap: 10px; }
+.player .ctrl {
+  border: 0; background: var(--faint); border-radius: 50%; width: 38px; height: 38px;
+  font-size: 14px; flex: none; padding: 0;
+}
+.player .ctrl.main-ctrl { background: var(--accent); color: var(--accent-ink); width: 44px; height: 44px; font-size: 16px; }
+.player .ctrl:disabled { opacity: 0.4; cursor: default; }
+.player .what { flex: 1; min-width: 0; }
+.player .title { font-weight: 650; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player .status { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player .bar { height: 4px; border-radius: 2px; background: var(--faint); margin-top: 6px; overflow: hidden; }
+.player .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.player select {
+  border: 0; border-radius: 9px; background: var(--faint); color: var(--ink);
+  font: 13px var(--sans); padding: 7px 8px; max-width: 150px;
+}
+.player .btn { padding: 7px 11px; font-size: 13px; }
+.spoken {
+  display: none; max-height: 40vh; overflow-y: auto; margin-bottom: 10px; padding: 4px 4px 0;
+  font-family: var(--serif); font-size: 16px; line-height: 1.6;
+}
+.player.show-text .spoken { display: block; }
+.spoken p { margin: 0 0 10px; padding: 6px 10px; border-radius: 10px; color: var(--muted); }
+.spoken p.now { background: var(--mark); color: var(--ink); }
+.spoken .note { font-family: var(--sans); font-size: 12px; color: var(--muted); padding: 0 10px 8px; }
+@media (max-width: 860px) {
+  .player select, .player .speed { display: none; }
+}
+
 @media print {
-  .topbar, .side, .panel { display: none; }
+  .topbar, .side, .panel, .player { display: none !important; }
   body { display: block; }
   .sheet { box-shadow: none; margin: 0; padding: 0; }
 }
@@ -313,10 +360,29 @@ article img { max-width: 100%; border-radius: 10px; }
     <button class="btn primary" id="pop-save">Enregistrer</button>
   </div>
 </div>
+<div class="player" id="player">
+  <div class="spoken" id="spoken"></div>
+  <div class="player-row">
+    <button class="ctrl" id="pl-prev" title="Chapitre précédent">⏮</button>
+    <button class="ctrl main-ctrl" id="pl-play" title="Écouter">▶</button>
+    <button class="ctrl" id="pl-next" title="Chapitre suivant">⏭</button>
+    <div class="what">
+      <div class="title" id="pl-title">Choisis un chapitre dans le sommaire, ou appuie sur ▶</div>
+      <div class="status" id="pl-status"></div>
+      <div class="bar"><span id="pl-bar"></span></div>
+    </div>
+    <select id="pl-speed" class="speed" title="Vitesse">
+      <option value="1">1×</option><option value="1.15">1,15×</option><option value="1.3">1,3×</option><option value="1.5">1,5×</option>
+    </select>
+    <select id="pl-voice" title="Voix"></select>
+    <button class="btn" id="pl-text">Texte lu</button>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>/*__MARKED__*/</script>
 <script type="application/json" id="docs-data">__DOCS_JSON__</script>
+<script type="application/json" id="listen-data">__LISTEN_JSON__</script>
 <script>
 (function () {
   "use strict";
@@ -531,6 +597,7 @@ article img { max-width: 100%; border-radius: 10px; }
       toc.appendChild(a);
       h.link = a;
     });
+    if (listener) listener.decorateToc(doc);
   }
 
   function updateCurrentSection() {
@@ -877,6 +944,327 @@ article img { max-width: 100%; border-radius: 10px; }
     refreshHighlights();
     toast("Remarques effacées");
   });
+
+
+  // ---------- Écoute chapitrée (skill lire-ecouter) ----------
+  // La page reçoit une configuration seulement quand elle est servie par le programme
+  // de la skill lire-ecouter. Ouverte comme simple fichier, elle reste en lecture seule.
+  const listenConfig = JSON.parse(document.getElementById("listen-data").textContent || "null");
+  const listener = listenConfig ? createListener(listenConfig) : null;
+
+  function createListener(config) {
+    document.body.classList.add("listen");
+    const VOICE_KEY = "lire:voice";
+    const SPEED_KEY = "lire:speed";
+    const player = $("player");
+    const audio = new Audio();
+    const L = {
+      docIndex: null, chapIndex: null, chunks: [], chunkIndex: 0,
+      playing: false, run: 0, spent: 0, prepared: {},
+    };
+
+    // Découpe un document en chapitres sur ses titres de niveau 2 (ou 3 s'il n'y en a pas).
+    function splitChapters(doc) {
+      if (doc.chapters) return doc.chapters;
+      const lines = doc.content.split("\n");
+      const level = lines.some((l) => /^##\s/.test(l)) ? 2 : (lines.some((l) => /^###\s/.test(l)) ? 3 : 0);
+      const chapters = [];
+      let current = { title: null, lines: [] };
+      let inFence = false;
+      for (const line of lines) {
+        if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+        const m = !inFence && level && line.match(level === 2 ? /^##\s+(.*)$/ : /^###\s+(.*)$/);
+        if (m) {
+          chapters.push(current);
+          current = { title: m[1].replace(/[*_`]/g, "").trim(), lines: [line] };
+        } else {
+          current.lines.push(line);
+        }
+      }
+      chapters.push(current);
+      const headingEls = doc.headings.filter((h) => h.level === level);
+      let k = 0;
+      doc.chapters = chapters
+        .map((c, idx) => ({ title: c.title, markdown: c.lines.join("\n").trim(), isIntro: idx === 0 }))
+        .filter((c) => c.markdown.replace(/^#.*$/gm, "").trim().length > 0 || !c.isIntro)
+        .map((c) => {
+          const h = c.isIntro ? null : headingEls[k++];
+          const h1 = doc.headings.find((x) => x.level === 1);
+          return {
+            title: c.isIntro ? (h1 ? h1.text : "Introduction") : c.title,
+            markdown: c.markdown, heading: h || null, isIntro: c.isIntro,
+          };
+        });
+      return doc.chapters;
+    }
+
+    function decorateToc(doc) {
+      const chapters = splitChapters(doc);
+      const toc = $("toc");
+      if (!toc.querySelector("h2")) toc.insertAdjacentHTML("afterbegin", "<h2>Sommaire</h2>");
+      chapters.forEach((c, ci) => {
+        const btn = document.createElement("button");
+        btn.className = "toc-play";
+        btn.textContent = "▶";
+        btn.title = "Écouter ce chapitre";
+        btn.dataset.chap = ci;
+        btn.addEventListener("click", (ev) => { ev.stopPropagation(); playChapter(state.current, ci); });
+        const row = document.createElement("div");
+        row.className = "toc-row";
+        if (c.isIntro) {
+          const label = document.createElement("div");
+          label.className = "toc-intro";
+          label.textContent = "Début : " + c.title;
+          row.append(btn, label);
+          toc.querySelector("h2").after(row);
+        } else if (c.heading && c.heading.link) {
+          c.heading.link.before(row);
+          row.append(btn, c.heading.link);
+        }
+      });
+      refreshTocButtons();
+    }
+
+    function refreshTocButtons() {
+      document.querySelectorAll(".toc-play").forEach((b) => {
+        const on = L.playing && L.docIndex === state.current && Number(b.dataset.chap) === L.chapIndex;
+        b.classList.toggle("playing", on);
+        b.textContent = on ? "❚❚" : "▶";
+      });
+    }
+
+    // ---------- Voix et vitesse ----------
+    const voiceSelect = $("pl-voice");
+    const speedSelect = $("pl-speed");
+    function readPref(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+    function writePref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+    function browserVoices() {
+      return speechSynthesis.getVoices().filter((v) => v.lang && v.lang.toLowerCase().startsWith("fr"));
+    }
+    function fillVoices() {
+      voiceSelect.innerHTML = "";
+      const list = config.engine === "voxtral"
+        ? config.voices.map((v) => ({ id: v.id, name: v.name }))
+        : browserVoices().map((v) => ({ id: v.name, name: v.name + (v.localService ? "" : " (en ligne)") }));
+      list.forEach((v) => {
+        const o = document.createElement("option");
+        o.value = v.id; o.textContent = v.name;
+        voiceSelect.appendChild(o);
+      });
+      const saved = readPref(VOICE_KEY + ":" + config.engine, "");
+      if (saved && list.some((v) => v.id === saved)) voiceSelect.value = saved;
+      voiceSelect.style.display = list.length ? "" : "none";
+    }
+    if (config.engine === "browser" && "speechSynthesis" in window) speechSynthesis.onvoiceschanged = fillVoices;
+    fillVoices();
+    voiceSelect.addEventListener("change", () => {
+      writePref(VOICE_KEY + ":" + config.engine, voiceSelect.value);
+      if (L.playing) startChunk(L.chunkIndex);
+    });
+    speedSelect.value = readPref(SPEED_KEY, "1");
+    speedSelect.addEventListener("change", () => {
+      writePref(SPEED_KEY, speedSelect.value);
+      audio.playbackRate = Number(speedSelect.value);
+      if (config.engine === "browser" && L.playing) startChunk(L.chunkIndex);
+    });
+
+    // ---------- Affichage ----------
+    function money(x) { return x.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " $"; }
+    function setStatus(msg) { $("pl-status").textContent = msg; }
+    function chapterLabel() {
+      const doc = docs[L.docIndex];
+      const chapters = splitChapters(doc);
+      return doc.name + " · chapitre " + (L.chapIndex + 1) + " sur " + chapters.length + " · " + chapters[L.chapIndex].title;
+    }
+    function renderSpoken(prep) {
+      const box = $("spoken");
+      box.innerHTML = "";
+      if (prep && prep.note) {
+        const n = document.createElement("div"); n.className = "note"; n.textContent = prep.note; box.appendChild(n);
+      } else if (prep && prep.mode === "clean") {
+        const n = document.createElement("div"); n.className = "note";
+        n.textContent = "Texte nettoyé, sans réécriture : la réécriture demande une clé Mistral.";
+        box.appendChild(n);
+      }
+      L.chunks.forEach((c, i) => {
+        const p = document.createElement("p");
+        p.textContent = c;
+        p.dataset.i = i;
+        box.appendChild(p);
+      });
+    }
+    function markChunk() {
+      document.querySelectorAll("#spoken p").forEach((p) => p.classList.toggle("now", Number(p.dataset.i) === L.chunkIndex));
+      const now = document.querySelector("#spoken p.now");
+      if (now && player.classList.contains("show-text")) now.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      $("pl-bar").style.width = L.chunks.length ? (100 * (L.chunkIndex + 1) / L.chunks.length) + "%" : "0";
+    }
+    function chapterCost() {
+      const chars = L.chunks.reduce((n, c) => n + c.length, 0);
+      return chars * config.pricePerMillion / 1e6;
+    }
+    function refreshButtons() {
+      $("pl-play").textContent = L.playing ? "❚❚" : "▶";
+      $("pl-play").title = L.playing ? "Pause" : "Écouter";
+      const has = L.docIndex !== null;
+      const n = has ? splitChapters(docs[L.docIndex]).length : 0;
+      $("pl-prev").disabled = !has || L.chapIndex <= 0;
+      $("pl-next").disabled = !has || L.chapIndex >= n - 1;
+      refreshTocButtons();
+    }
+    function chunkStatus(extra) {
+      const parts = ["morceau " + (L.chunkIndex + 1) + " sur " + L.chunks.length];
+      if (config.engine === "voxtral") {
+        parts.push("chapitre entier : environ " + money(chapterCost()));
+        parts.push("dépensé depuis l'ouverture : " + money(L.spent));
+      } else {
+        parts.push("voix du navigateur, gratuite");
+      }
+      if (extra) parts.unshift(extra);
+      setStatus(parts.join(" · "));
+    }
+
+    // ---------- Appels au programme local ----------
+    async function post(path, body, asBlob) {
+      let res;
+      try {
+        res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      } catch (e) {
+        throw new Error("Le programme d'écoute ne répond plus. Il s'arrête après " + config.idleMinutes +
+          " minutes sans écoute : relance la skill lire-ecouter.");
+      }
+      if (!res.ok) {
+        let msg = "Erreur " + res.status;
+        try { msg = (await res.json()).error || msg; } catch (e) {}
+        throw new Error(msg);
+      }
+      return asBlob ? { blob: await res.blob(), cached: res.headers.get("X-From-Cache") === "1" } : res.json();
+    }
+
+    const audioCache = {};
+    function fetchAudio(text) {
+      const voice = voiceSelect.value;
+      const key = voice + "|" + text;
+      if (!audioCache[key]) {
+        audioCache[key] = post("/api/audio", { text, voice }, true).then((r) => {
+          if (!r.cached) L.spent += text.length * config.pricePerMillion / 1e6;
+          return URL.createObjectURL(r.blob);
+        });
+        audioCache[key].catch(() => { delete audioCache[key]; });
+      }
+      return audioCache[key];
+    }
+
+    // ---------- Lecture ----------
+    async function playChapter(di, ci) {
+      if (L.playing && L.docIndex === di && L.chapIndex === ci) { pause(); return; }
+      const run = ++L.run;
+      stopSound();
+      L.docIndex = di; L.chapIndex = ci; L.chunks = []; L.chunkIndex = 0; L.playing = true;
+      if (state.current !== di) showDoc(di);
+      const chapter = splitChapters(docs[di])[ci];
+      if (chapter.heading) chapter.heading.el.scrollIntoView({ behavior: "smooth", block: "start" });
+      else $("main").scrollTo({ top: 0, behavior: "smooth" });
+      $("pl-title").textContent = chapterLabel();
+      refreshButtons();
+      setStatus(config.engine === "voxtral" ? "Réécriture du chapitre pour l'oral…" : "Préparation du chapitre…");
+      try {
+        const key = di + ":" + ci;
+        const prep = L.prepared[key] || (L.prepared[key] = await post("/api/prepare", { markdown: chapter.markdown }));
+        if (run !== L.run) return;
+        L.chunks = prep.chunks.length ? prep.chunks : ["Ce chapitre ne contient pas de texte à lire."];
+        renderSpoken(prep);
+        startChunk(0);
+      } catch (e) {
+        if (run !== L.run) return;
+        delete L.prepared[di + ":" + ci];
+        L.playing = false; refreshButtons(); setStatus(e.message);
+      }
+    }
+
+    async function startChunk(i) {
+      const run = ++L.run;
+      stopSound();
+      L.chunkIndex = i;
+      L.playing = true;
+      markChunk();
+      refreshButtons();
+      const text = L.chunks[i];
+      if (config.engine === "browser") {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = "fr-FR";
+        u.rate = Number(speedSelect.value);
+        const v = browserVoices().find((x) => x.name === voiceSelect.value);
+        if (v) u.voice = v;
+        u.onend = () => { if (run === L.run) next(); };
+        speechSynthesis.speak(u);
+        chunkStatus();
+        return;
+      }
+      chunkStatus("génération de la voix…");
+      try {
+        const url = await fetchAudio(text);
+        if (run !== L.run) return;
+        audio.src = url;
+        audio.playbackRate = Number(speedSelect.value);
+        await audio.play();
+        chunkStatus();
+        if (i + 1 < L.chunks.length) fetchAudio(L.chunks[i + 1]).catch(() => {});
+      } catch (e) {
+        if (run !== L.run) return;
+        L.playing = false; refreshButtons(); setStatus(e.message);
+      }
+    }
+
+    audio.addEventListener("ended", () => { if (L.playing) next(); });
+
+    function next() {
+      if (L.chunkIndex + 1 < L.chunks.length) { startChunk(L.chunkIndex + 1); return; }
+      const n = splitChapters(docs[L.docIndex]).length;
+      if (L.chapIndex + 1 < n) { playChapter(L.docIndex, L.chapIndex + 1); return; }
+      L.playing = false; refreshButtons(); setStatus("Fin du document.");
+    }
+
+    function stopSound() {
+      audio.pause();
+      if ("speechSynthesis" in window) speechSynthesis.cancel();
+    }
+
+    function pause() {
+      L.playing = false;
+      L.run++;
+      if (config.engine === "browser") speechSynthesis.cancel(); else audio.pause();
+      refreshButtons();
+      setStatus("En pause. ▶ reprend au morceau " + (L.chunkIndex + 1) + ".");
+    }
+
+    function resume() {
+      if (L.docIndex === null) { playChapter(state.current, 0); return; }
+      if (!L.chunks.length) { playChapter(L.docIndex, L.chapIndex); return; }
+      if (config.engine === "voxtral" && audio.src && !audio.ended && audio.currentTime > 0) {
+        const run = ++L.run;
+        L.playing = true; refreshButtons();
+        audio.play().then(() => { if (run === L.run) chunkStatus(); });
+        return;
+      }
+      startChunk(L.chunkIndex);
+    }
+
+    $("pl-play").addEventListener("click", () => (L.playing ? pause() : resume()));
+    $("pl-prev").addEventListener("click", () => { if (L.chapIndex > 0) playChapter(L.docIndex, L.chapIndex - 1); });
+    $("pl-next").addEventListener("click", () => playChapter(L.docIndex, L.chapIndex + 1));
+    $("pl-text").addEventListener("click", () => { player.classList.toggle("show-text"); markChunk(); });
+
+    setInterval(() => { fetch("/api/ping").catch(() => {}); }, 5 * 60 * 1000);
+
+    if (config.engine === "browser") {
+      setStatus("Voix du navigateur : pas de clé Mistral, la lecture est gratuite et sans réécriture.");
+    } else {
+      setStatus("Voix Voxtral. Rien n'est facturé avant que tu lances un chapitre.");
+    }
+    return { decorateToc };
+  }
 
   // ---------- Divers ----------
   function formatNumber(n) { return n.toLocaleString("fr-FR"); }
