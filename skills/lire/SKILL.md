@@ -1,12 +1,18 @@
 ---
 name: lire
-description: Ouvre dans une page de lecture les documents Markdown proposés dans la dernière réponse, pour que l'utilisateur les lise, les annote et colle ses remarques dans la session. L'utilisateur la lance à la main avec /lire.
+description: Ouvre dans une page de lecture les documents Markdown proposés dans la dernière réponse, pour que l'utilisateur les lise, les annote et vérifie ensuite les corrections. L'utilisateur la lance à la main avec /lire.
 disable-model-invocation: true
 ---
 
 # Ouvrir des documents dans la page de lecture
 
-L'utilisateur veut lire confortablement les documents Markdown que tu viens de lui proposer, et les annoter. La page de lecture liste les documents dans une colonne de gauche et affiche le texte en grand. Il sélectionne un passage, écrit sa remarque, puis le bouton « Copier pour Claude » copie toutes ses remarques. Il les colle ensuite dans la session.
+Le déroulé est une boucle de relecture :
+1. tu rédiges des documents Markdown pendant la session et tu les proposes ;
+2. l'utilisateur les ouvre avec cette skill, les lit et annote des passages ;
+3. il te transmet ses remarques, tu corriges les documents et tu réponds à chaque remarque ;
+4. il relance la skill pour vérifier tes corrections.
+
+La page garde l'état de lecture dans `<projet>/exports/lecture/reading-state.json` : les remarques, tes réponses, et la version de chaque document relue en dernier. À la relance, la page marque chaque document « Nouveau », « Modifié » ou « Inchangé ». Pour un document modifié, elle surligne en vert les passages changés depuis la dernière relecture, met un point dans le sommaire à côté des parties concernées, et liste les passages supprimés.
 
 ## 1. Choisir les documents
 
@@ -17,29 +23,37 @@ Les documents à ouvrir sont, dans cet ordre de priorité :
 
 Chaque chemin est absolu. Un fichier cité par son seul nom se retrouve dans le dossier du projet.
 
-## 2. Fabriquer et ouvrir la page
+## 2. Lancer le programme de lecture
 
-Le script `build_reader.py` se trouve dans le dossier de cette skill. Lance-le depuis le dossier du projet, avec Python 3 :
+La page a besoin d'un petit programme local, `reader_server.py`, rangé dans le dossier de cette skill. Lance-le détaché depuis le dossier du projet, pour qu'il continue après ta réponse :
 
 ```bash
-python3 -I <dossier de cette skill>/build_reader.py /chemin/absolu/A.md /chemin/absolu/B.md
+nohup python3 -I <dossier de cette skill>/reader_server.py /chemin/absolu/A.md /chemin/absolu/B.md > /tmp/lire.log 2>&1 &
+sleep 2; cat /tmp/lire.log
 ```
 
-Le script écrit la page dans `<projet>/exports/lecture/lecture-AAAA-MM-JJ-HHMMSS.html`, l'ouvre dans le navigateur par défaut et affiche son chemin. Il signale un fichier introuvable sur la sortie d'erreur, et ouvre quand même les autres. L'option `--out DOSSIER` change le dossier de sortie. L'option `--no-open` écrit la page sans l'ouvrir : utilise-la hors de macOS, puis donne le chemin à l'utilisateur.
-
-La page embarque le texte des documents : elle montre leur état au moment de la commande. Après une modification d'un document, relance la commande pour avoir une page à jour.
+La première ligne du journal donne l'adresse de la page et le chemin du fichier d'état. Le programme ouvre la page dans le navigateur par défaut ; l'option `--no-open` l'en empêche. Il s'arrête seul après 45 minutes sans activité de la page. Un programme déjà lancé pour d'autres documents peut continuer à tourner : le nouveau prend le port libre suivant.
 
 ## 3. Répondre à l'utilisateur
 
-Ta réponse tient en quelques lignes : les documents ouverts, le chemin absolu de la page, et le mode d'emploi en trois étapes :
+Ta réponse donne l'adresse de la page, l'état de chaque document (la commande `python3 -I <dossier de cette skill>/reading_state.py status` l'affiche), et ce mode d'emploi :
 1. sélectionner un passage, cliquer sur « Annoter », écrire la remarque ;
 2. pour une remarque sur un document entier, cliquer sur « Remarque sur ce document » ;
-3. cliquer sur « Copier pour Claude », puis coller dans la session.
+3. pour transmettre les remarques, soit cliquer sur « Copier pour Claude » et coller dans la session, soit écrire « j'ai annoté » dans la session ;
+4. une remarque traitée se marque « Réglée » : elle n'est plus surlignée ni transmise.
 
-Les remarques restent gardées dans le navigateur si l'utilisateur ferme la page, et elles réapparaissent quand il rouvre une page qui contient le même document.
+## 4. Traiter les remarques
 
-## 4. Quand l'utilisateur colle ses remarques
+Les remarques arrivent de deux façons :
+- l'utilisateur colle un texte qui commence par « Voici mes remarques de lecture » ;
+- l'utilisateur écrit « j'ai annoté » ou une phrase équivalente : lance depuis le dossier du projet `python3 -I <dossier de cette skill>/reading_state.py remarks`, qui affiche le même texte.
 
-Le texte collé commence par « Voici mes remarques de lecture ». Il est groupé par document, avec le chemin du fichier, puis une remarque numérotée par passage : la section, le passage cité et la remarque. Le passage est cité sans les signes de mise en forme du Markdown (`**`, `` ` ``, `#`) : cherche-le dans le fichier sur ses mots, pas à l'identique.
+Dans les deux cas, transmettre les remarques clôt le tour de relecture : la version actuelle de chaque document devient la version relue. Les corrections que tu fais ensuite seront surlignées à la prochaine ouverture.
 
-Traite chaque remarque. Ta réponse reprend le nom du document et le numéro de chaque remarque, et dit en une phrase ce que tu as changé dans le fichier ou la question que tu poses à l'utilisateur.
+Le texte est groupé par document, avec le chemin du fichier, puis une remarque par numéro (`R1`, `R2`…) : la section, le passage cité et la remarque. Le passage est cité sans les signes de mise en forme du Markdown (`**`, `` ` ``, `#`) : cherche-le dans le fichier sur ses mots, pas à l'identique. Une ligne « Ta réponse précédente » indique que l'utilisateur n'est pas satisfait de ta réponse du tour d'avant.
+
+Pour chaque remarque :
+1. corrige le document, ou prépare la question à poser ;
+2. écris ta réponse en une phrase dans le fichier d'état : `python3 -I <dossier de cette skill>/reading_state.py reply R3 "Ce que j'ai changé, ou ma question"`. La réponse apparaît sous la remarque dans la page, même si elle est ouverte, en moins de 15 secondes.
+
+Ta réponse dans la session reprend le numéro de chaque remarque et la même phrase. Termine en proposant de relancer `/lire` pour vérifier les corrections.

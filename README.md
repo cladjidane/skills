@@ -17,8 +17,8 @@ Les skills s'appellent ensuite `fc:<nom>`, par exemple `/fc:lire`.
 
 | Skill | Ce qu'elle fait |
 |---|---|
-| `lire` | Ouvre dans le navigateur les documents Markdown que Claude vient de proposer. On les lit, on annote des passages, puis le bouton « Copier pour Claude » copie les remarques à coller dans la session. Demande Python 3. |
-| `lire-ecouter` | Même page que `lire`, avec une écoute chapitre par chapitre. Chaque chapitre est réécrit pour l'oral par Mistral, puis dit par la voix Voxtral, seulement quand on clique sur ▶. Sans clé Mistral (`MISTRAL_API_KEY`), la page utilise la voix gratuite du navigateur. Demande Python 3 et la skill `lire`. |
+| `lire` | Ouvre dans le navigateur les documents Markdown que Claude vient de proposer. On les lit, on annote des passages, puis on transmet les remarques à Claude par copier-coller ou en écrivant « j'ai annoté ». Claude répond sous chaque remarque. À la relance, chaque document est marqué « Nouveau », « Modifié » ou « Inchangé », et les passages changés depuis la dernière relecture sont surlignés. L'état est gardé dans `exports/lecture/reading-state.json` du projet. Demande Python 3. |
+| `lire-ecouter` | Même page que `lire`, avec une écoute chapitre par chapitre. Chaque chapitre est réécrit pour l'oral par Mistral, puis dit par la voix Voxtral, seulement quand on clique sur ▶. Sans clé Mistral (`MISTRAL_API_KEY`), la page utilise la voix gratuite du navigateur. Pour un document modifié, un bouton enchaîne seulement les parties qui ont changé. Demande Python 3 et la skill `lire`. |
 
 ## Bibliothèques incluses
 

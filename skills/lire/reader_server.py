@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Sert la page de lecture avec un lecteur audio chapitré.
+"""Sert la page de lecture des skills lire et lire-ecouter, et garde l'état de lecture.
 
-Usage : listen_server.py [--env-file FICHIER] [--port N] [--no-open] FICHIER.md [FICHIER.md ...]
+Usage : reader_server.py [--listen] [--project DOSSIER] [--env-file FICHIER] [--port N] [--no-open] FICHIER.md ...
 
-Le programme tourne sur la machine de l'utilisateur pendant l'écoute. La page lui demande
-un chapitre ; il le réécrit pour l'oral avec Mistral, puis fait dire chaque morceau par
-Voxtral. Rien n'est réécrit ni synthétisé avant qu'on clique sur « écouter » : un chapitre
-jamais écouté ne coûte rien. Les textes réécrits et les sons sont gardés en cache, donc
-réécouter un chapitre ne coûte rien non plus.
+Le programme tourne sur la machine de l'utilisateur pendant la lecture. Il sert la page, et il
+écrit les remarques dans <projet>/exports/lecture/reading-state.json (voir reading_state.py).
+Ce fichier garde aussi la version de chaque document relue en dernier : la page affiche si un
+document est nouveau, modifié ou inchangé, et surligne les passages changés.
 
-Sans clé Mistral, la page reçoit le texte nettoyé du Markdown et le fait lire par la voix
-du navigateur.
+Avec --listen, la page gagne un lecteur audio chapitré. Un chapitre est réécrit pour l'oral avec
+Mistral, puis chaque morceau est dit par Voxtral, seulement quand l'utilisateur clique sur ▶.
+Les textes réécrits et les sons sont gardés en cache : réécouter ne coûte rien. Sans clé Mistral,
+la page lit le texte nettoyé avec la voix du navigateur.
 
 La clé est cherchée dans la variable d'environnement MISTRAL_API_KEY, puis dans le fichier
 donné par --env-file, puis dans ~/.config/fc/env. Elle n'est jamais envoyée à la page.
@@ -33,8 +34,9 @@ import urllib.error
 import urllib.request
 
 SKILL_DIR = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(SKILL_DIR.parent / "lire"))
+sys.path.insert(0, str(SKILL_DIR))
 from build_reader import build_html, load_docs  # noqa: E402
+import reading_state as rs  # noqa: E402
 
 CACHE_DIR = pathlib.Path.home() / ".cache" / "fc-lire-ecouter"
 DEFAULT_ENV_FILE = pathlib.Path.home() / ".config" / "fc" / "env"
@@ -184,7 +186,14 @@ def cache_path(kind, *parts, suffix):
     return folder / f"{digest}{suffix}"
 
 
+def strip_heading_numbers(md):
+    """« ## 4. Les règles » devient « ## Les règles » : ajouter une partie avant celle-ci ne
+    change plus son texte, et sa version déjà réécrite et dite reste dans le cache."""
+    return re.sub(r"^(#{1,6})\s+(?:\d+(?:\.\d+)*[.)]?|[IVXLC]+\.)\s+", r"\1 ", md, flags=re.M)
+
+
 def prepare(md, key):
+    md = strip_heading_numbers(md)
     mode = "rewrite" if key else "clean"
     cached = cache_path("text", mode, SPOKEN_PROMPT if key else "", md, suffix=".json")
     if cached.exists():
@@ -217,7 +226,24 @@ def synthesize(text, voice_id, key):
 
 # ---------- Serveur ----------
 
-def make_handler(html, key, voices):
+def page_state(project, docs):
+    """État envoyé à la page : pour chaque document, son état, la version relue et ses remarques."""
+    with rs.locked_state(project) as state:
+        result = {}
+        for d in docs:
+            entry = rs.doc_entry(state, d["path"])
+            status, baseline = rs.doc_status(entry, d["content"])
+            result[d["path"]] = {
+                "status": status, "baseline": baseline,
+                "reviewedAt": (entry.get("reviewed") or {}).get("at"),
+                "remarks": entry["remarks"],
+            }
+    return result
+
+
+def make_handler(html, key, voices, project, docs):
+    contents = {d["path"]: d["content"] for d in docs}
+
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -241,6 +267,8 @@ def make_handler(html, key, voices):
                 self.send(200, html.encode(), "text/html; charset=utf-8")
             elif self.path == "/api/ping":
                 self.send_json(200, {"ok": True})
+            elif self.path == "/api/state":
+                self.send_json(200, page_state(project, docs))
             else:
                 self.send_json(404, {"error": "introuvable"})
 
@@ -249,9 +277,26 @@ def make_handler(html, key, voices):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length) or b"{}")
-                if self.path == "/api/prepare":
+                if self.path == "/api/remark":
+                    if payload.get("doc") not in contents:
+                        self.send_json(400, {"error": "document inconnu"})
+                        return
+                    with rs.locked_state(project) as state:
+                        remark = rs.apply_op(state, payload)
+                    self.send_json(200, {"remark": remark})
+                elif self.path == "/api/reviewed":
+                    # payload.docs : chemins des documents dont la version affichée devient la version relue
+                    with rs.locked_state(project) as state:
+                        for path in payload.get("docs", []):
+                            if path in contents:
+                                rs.mark_reviewed(rs.doc_entry(state, path), contents[path])
+                    self.send_json(200, page_state(project, docs))
+                elif self.path == "/api/prepare":
                     self.send_json(200, prepare(payload["markdown"], key))
                 elif self.path == "/api/audio":
+                    if listen_off:
+                        self.send_json(404, {"error": "écoute non activée"})
+                        return
                     if not key:
                         self.send_json(400, {"error": "Pas de clé Mistral : la voix du navigateur est utilisée."})
                         return
@@ -265,6 +310,7 @@ def make_handler(html, key, voices):
             except Exception as e:  # la page affiche le message à l'utilisateur
                 self.send_json(500, {"error": f"{type(e).__name__} : {e}"})
 
+    listen_off = voices is None
     return Handler
 
 
@@ -288,8 +334,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("files", nargs="+")
     parser.add_argument("--env-file", default=None)
-    parser.add_argument("--port", type=int, default=8780)
+    parser.add_argument("--port", type=int, default=8780)  # le premier port libre à partir de celui-ci
     parser.add_argument("--no-open", action="store_true")
+    parser.add_argument("--listen", action="store_true")
+    parser.add_argument("--project", default=".")
     args = parser.parse_args()
 
     docs, missing = load_docs(args.files)
@@ -298,25 +346,32 @@ def main():
     if not docs:
         return 1
 
-    key = find_api_key(args.env_file)
+    project = str(pathlib.Path(args.project).expanduser().resolve())
+    page_state(project, docs)  # crée le fichier d'état et y inscrit les documents
+
+    key = find_api_key(args.env_file) if args.listen else None
     voices = list_french_voices(key) if key else []
-    listen = {
+    listen = None if not args.listen else {
         "engine": "voxtral" if key and voices else "browser",
         "voices": voices,
         "pricePerMillion": PRICE_PER_MILLION_CHARS,
         "idleMinutes": IDLE_MINUTES,
     }
-    if key and not voices:
+    if args.listen and key and not voices:
         print("Clé Mistral trouvée, mais la liste des voix est inaccessible : voix du navigateur.", file=sys.stderr)
     html = build_html(docs, listen)
 
     port = free_port(args.port)
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), make_handler(html, key if voices else None, voices))
+    handler = make_handler(html, key if voices else None, voices if args.listen else None, project, docs)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
     threading.Thread(target=watch_idle, args=(server,), daemon=True).start()
     url = f"http://127.0.0.1:{port}/"
-    engine = "Voxtral (Mistral)" if listen["engine"] == "voxtral" else "voix du navigateur"
-    print(f"{url}  |  {len(docs)} document(s)  |  voix : {engine}  |  arrêt après {IDLE_MINUTES} min sans écoute",
-          flush=True)
+    if listen:
+        engine = "voix : Voxtral (Mistral)" if listen["engine"] == "voxtral" else "voix : navigateur"
+    else:
+        engine = "lecture seule, sans écoute"
+    print(f"{url}  |  {len(docs)} document(s)  |  {engine}  |  arrêt après {IDLE_MINUTES} min sans activité"
+          f"  |  état : {rs.state_path(project)}", flush=True)
     if not args.no_open:
         subprocess.run(["open", url], check=False)
     try:

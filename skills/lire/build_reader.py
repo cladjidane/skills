@@ -1,21 +1,12 @@
 #!/usr/bin/env python3
-"""Fabrique une page de lecture HTML autonome à partir de fichiers Markdown.
+"""Assemble la page de lecture : le modèle reader.html, la bibliothèque marked et les documents.
 
-Usage : build_reader.py [--out DOSSIER] [--no-open] FICHIER.md [FICHIER.md ...]
-
-La page embarque le texte des documents et la bibliothèque marked : elle
-s'ouvre sans serveur et sans connexion. Par défaut elle est écrite dans
-<dossier courant>/exports/lecture/, puis ouverte dans le navigateur.
-
-La skill lire-ecouter importe build_html() pour servir la même page avec le
-lecteur audio activé.
+reader_server.py importe ces fonctions et sert la page. La page a besoin de ce programme pour
+enregistrer les remarques : elle ne s'utilise plus comme simple fichier ouvert dans le navigateur.
 """
-import argparse
 import datetime as dt
 import json
 import pathlib
-import subprocess
-import sys
 
 SKILL_DIR = pathlib.Path(__file__).resolve().parent
 TEMPLATE = SKILL_DIR / "reader.html"
@@ -51,31 +42,3 @@ def build_html(docs, listen=None):
     html = html.replace("__DOCS_JSON__", embed(docs))
     html = html.replace("__LISTEN_JSON__", embed(listen))
     return html
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("files", nargs="+")
-    parser.add_argument("--out", default=None)
-    parser.add_argument("--no-open", action="store_true")
-    args = parser.parse_args()
-
-    docs, missing = load_docs(args.files)
-    for m in missing:
-        print(f"Fichier introuvable : {m}", file=sys.stderr)
-    if not docs:
-        return 1
-
-    out_dir = pathlib.Path(args.out).expanduser() if args.out else pathlib.Path.cwd() / "exports" / "lecture"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"lecture-{dt.datetime.now().strftime('%Y-%m-%d-%H%M%S')}.html"
-    out.write_text(build_html(docs), encoding="utf-8")
-    print(out)
-
-    if not args.no_open:
-        subprocess.run(["open", str(out)], check=False)
-    return 0 if not missing else 2
-
-
-if __name__ == "__main__":
-    sys.exit(main())
