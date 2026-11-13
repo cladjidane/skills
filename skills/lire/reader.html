@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture</title>
+<style>
+:root {
+  --bg: #f4f1ea;
+  --paper: #fffdf8;
+  --ink: #1f1d1a;
+  --muted: #6b655c;
+  --faint: #ebe6dc;
+  --line: #e2dccf;
+  --accent: #b0502a;
+  --accent-ink: #ffffff;
+  --accent-soft: #f6e4d9;
+  --quote-bg: #f3efe6;
+  --mark: rgba(255, 207, 72, 0.55);
+  --mark-active: rgba(255, 150, 50, 0.65);
+  --shadow: 0 10px 30px rgba(40, 30, 10, 0.14), 0 2px 6px rgba(40, 30, 10, 0.08);
+  --serif: "Iowan Old Style", "Charter", "Palatino", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161513;
+    --paper: #1e1d1a;
+    --ink: #ece7de;
+    --muted: #a29a8e;
+    --faint: #2a2824;
+    --line: #34312c;
+    --accent: #e3895a;
+    --accent-ink: #1b120c;
+    --accent-soft: #3a2a20;
+    --quote-bg: #26241f;
+    --mark: rgba(255, 196, 60, 0.33);
+    --mark-active: rgba(255, 140, 50, 0.55);
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  display: grid;
+  grid-template-rows: 56px 1fr;
+  grid-template-columns: 270px minmax(0, 1fr) 360px;
+  grid-template-areas: "top top top" "side main panel";
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* Barre du haut */
+.topbar {
+  grid-area: top;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px;
+  background: var(--paper);
+  box-shadow: 0 1px 0 var(--line);
+  z-index: 5;
+}
+.topbar .brand { font-weight: 650; font-size: 15px; letter-spacing: 0.01em; }
+.topbar .brand span { color: var(--muted); font-weight: 450; margin-left: 6px; }
+.topbar .spacer { flex: 1; }
+.btn {
+  border: 0; border-radius: 9px; padding: 8px 14px;
+  background: var(--faint); font-size: 14px; font-weight: 550;
+}
+.btn:hover { filter: brightness(0.97); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--faint); color: var(--ink); }
+.btn.danger { color: #b3261e; }
+.btn .count {
+  display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 6px;
+  border-radius: 10px; background: var(--accent-soft); color: var(--accent);
+  font-size: 12px; line-height: 20px; text-align: center;
+}
+.btn.primary .count { background: rgba(255,255,255,0.25); color: inherit; }
+.only-narrow { display: none; }
+
+/* Colonne de gauche */
+.side {
+  grid-area: side; overflow-y: auto;
+  padding: 18px 14px 40px;
+}
+.side h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin: 6px 8px 8px; font-weight: 650;
+}
+.doc-tab {
+  display: block; width: 100%; text-align: left;
+  border: 0; background: transparent; border-radius: 10px;
+  padding: 9px 10px; margin-bottom: 2px;
+}
+.doc-tab:hover { background: var(--faint); }
+.doc-tab.active { background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.doc-tab .name { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 14px; }
+.doc-tab .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.doc-tab .badge {
+  font-size: 11px; font-weight: 650; color: var(--accent);
+  background: var(--accent-soft); border-radius: 8px; padding: 1px 7px; height: fit-content;
+}
+.toc { margin-top: 22px; }
+.toc a {
+  display: block; text-decoration: none; color: var(--muted);
+  font-size: 13px; line-height: 1.35; padding: 5px 10px; border-radius: 8px;
+}
+.toc a:hover { background: var(--faint); color: var(--ink); }
+.toc a.lvl-3 { padding-left: 24px; font-size: 12.5px; }
+.toc a.current { color: var(--ink); background: var(--faint); font-weight: 600; }
+
+/* Zone de lecture */
+.main { grid-area: main; overflow-y: auto; scroll-behavior: smooth; }
+.sheet {
+  max-width: 780px; margin: 28px auto 120px; padding: 48px 64px 64px;
+  background: var(--paper); border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.doc-head { margin-bottom: 34px; padding-bottom: 20px; box-shadow: 0 1px 0 var(--line); }
+.doc-head .file { font-family: var(--mono); font-size: 13px; color: var(--accent); font-weight: 600; }
+.doc-head .info { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.5; overflow-wrap: anywhere; }
+article {
+  font-family: var(--serif); font-size: 19px; line-height: 1.7;
+  hyphens: auto; -webkit-hyphens: auto;
+}
+article[hidden] { display: none; }
+article h1, article h2, article h3, article h4 {
+  font-family: var(--sans); line-height: 1.25; letter-spacing: -0.01em;
+  scroll-margin-top: 24px;
+}
+article h1 { font-size: 32px; margin: 0 0 22px; font-weight: 720; }
+article h2 { font-size: 24px; margin: 46px 0 14px; font-weight: 680; }
+article h3 { font-size: 19px; margin: 32px 0 10px; font-weight: 660; }
+article h4 { font-size: 16px; margin: 24px 0 8px; font-weight: 650; color: var(--muted); }
+article p { margin: 0 0 16px; }
+article ul, article ol { padding-left: 26px; margin: 0 0 16px; }
+article li { margin: 4px 0; }
+article li > p { margin: 0 0 6px; }
+article a { color: var(--accent); text-underline-offset: 3px; }
+article strong { font-weight: 700; }
+article blockquote {
+  margin: 18px 0; padding: 14px 20px; border-radius: 12px;
+  background: var(--quote-bg); color: var(--ink);
+}
+article blockquote p:last-child { margin-bottom: 0; }
+article code {
+  font-family: var(--mono); font-size: 0.82em;
+  background: var(--faint); padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--faint); padding: 16px 18px; border-radius: 12px;
+  overflow-x: auto; font-size: 15px; line-height: 1.5;
+}
+article pre code { background: none; padding: 0; font-size: inherit; }
+article hr { border: 0; height: 1px; background: var(--line); margin: 36px 0; }
+article .table-wrap { overflow-x: auto; margin: 18px 0 22px; }
+article table { border-collapse: collapse; font-family: var(--sans); font-size: 14.5px; line-height: 1.45; width: 100%; }
+article th, article td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+article th { font-weight: 650; background: var(--faint); }
+article img { max-width: 100%; border-radius: 10px; }
+
+::highlight(remark) { background-color: var(--mark); }
+::highlight(remark-active) { background-color: var(--mark-active); }
+
+/* Panneau des remarques */
+.panel {
+  grid-area: panel; overflow-y: auto;
+  background: var(--paper); box-shadow: -1px 0 0 var(--line);
+  display: flex; flex-direction: column;
+}
+.panel-head { padding: 18px 18px 12px; position: sticky; top: 0; background: var(--paper); z-index: 2; }
+.panel-head h2 { margin: 0 0 4px; font-size: 16px; }
+.panel-head p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.panel-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.panel-body { padding: 4px 18px 40px; }
+.group-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); font-weight: 650; margin: 20px 0 8px;
+}
+.remark {
+  background: var(--bg); border-radius: 12px; padding: 12px 12px 10px; margin-bottom: 10px;
+}
+.remark.active { box-shadow: 0 0 0 2px var(--accent); }
+.remark .where { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
+.remark .quote {
+  font-family: var(--serif); font-size: 14.5px; line-height: 1.5; font-style: italic;
+  background: var(--mark); border-radius: 8px; padding: 6px 9px; cursor: pointer;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.remark .quote.orphan { background: var(--faint); cursor: default; }
+.remark textarea {
+  width: 100%; margin-top: 8px; border: 0; border-radius: 8px; resize: none;
+  background: var(--paper); color: var(--ink); padding: 8px 10px;
+  font: 14px/1.45 var(--sans); min-height: 38px;
+}
+.remark textarea:focus { outline: 2px solid var(--accent); }
+.remark .del { border: 0; background: none; color: var(--muted); font-size: 12px; padding: 0; }
+.remark .del:hover { color: #b3261e; }
+.empty { font-size: 14px; color: var(--muted); line-height: 1.55; padding: 14px; background: var(--bg); border-radius: 12px; margin-top: 14px; }
+
+/* Bouton flottant et fenêtre d'annotation */
+.float-btn {
+  position: absolute; z-index: 20; display: none;
+  border: 0; border-radius: 10px; padding: 8px 14px;
+  background: var(--ink); color: var(--paper); font-size: 14px; font-weight: 600;
+  box-shadow: var(--shadow);
+}
+.popover {
+  position: absolute; z-index: 21; display: none; width: 360px;
+  background: var(--paper); border-radius: 14px; box-shadow: var(--shadow); padding: 14px;
+}
+.popover .quote {
+  font-family: var(--serif); font-style: italic; font-size: 14px; line-height: 1.45;
+  background: var(--mark); border-radius: 8px; padding: 6px 9px; max-height: 90px; overflow: hidden;
+}
+.popover textarea {
+  width: 100%; margin: 10px 0; min-height: 90px; resize: vertical;
+  border: 0; border-radius: 10px; background: var(--bg); color: var(--ink);
+  padding: 10px 12px; font: 15px/1.5 var(--sans);
+}
+.popover textarea:focus { outline: 2px solid var(--accent); }
+.popover .row { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.popover .hint { font-size: 12px; color: var(--muted); margin: -4px 0 10px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px);
+  background: var(--ink); color: var(--paper); padding: 11px 18px; border-radius: 12px;
+  font-size: 14px; font-weight: 550; opacity: 0; pointer-events: none;
+  transition: opacity .2s, transform .2s; z-index: 30; box-shadow: var(--shadow);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Écrans étroits */
+@media (max-width: 1240px) {
+  body { grid-template-columns: 250px minmax(0, 1fr); grid-template-areas: "top top" "side main"; }
+  .panel {
+    position: fixed; top: 56px; right: 0; bottom: 0; width: min(380px, 100vw);
+    transform: translateX(100%); transition: transform .2s; z-index: 10; box-shadow: var(--shadow);
+  }
+  body.panel-open .panel { transform: none; }
+  .only-panel-narrow { display: inline-block; }
+}
+@media (min-width: 1241px) { .only-panel-narrow { display: none; } }
+@media (max-width: 860px) {
+  body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; }
+  .side {
+    position: fixed; top: 56px; left: 0; bottom: 0; width: min(300px, 90vw);
+    background: var(--bg); transform: translateX(-100%); transition: transform .2s; z-index: 10;
+    box-shadow: var(--shadow);
+  }
+  body.side-open .side { transform: none; }
+  .only-narrow { display: inline-block; }
+  .sheet { margin: 12px 16px 80px; padding: 28px 22px 40px; }
+  article { font-size: 18px; }
+  .topbar .brand span { display: none; }
+  .popover { width: calc(100vw - 32px); }
+}
+@media print {
+  .topbar, .side, .panel { display: none; }
+  body { display: block; }
+  .sheet { box-shadow: none; margin: 0; padding: 0; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="btn ghost only-narrow" id="toggle-side">Documents</button>
+  <div class="brand">Lecture<span id="brand-sub"></span></div>
+  <div class="spacer"></div>
+  <button class="btn only-panel-narrow" id="toggle-panel">Remarques<span class="count" id="count-top">0</span></button>
+  <button class="btn primary" id="copy-top">Copier pour Claude</button>
+</header>
+
+<nav class="side" id="side">
+  <h2>Documents</h2>
+  <div id="doc-list"></div>
+  <div class="toc" id="toc"></div>
+</nav>
+
+<main class="main" id="main">
+  <div class="sheet">
+    <div class="doc-head">
+      <div class="file" id="doc-file"></div>
+      <div class="info" id="doc-info"></div>
+    </div>
+    <div id="articles"></div>
+  </div>
+</main>
+
+<aside class="panel" id="panel">
+  <div class="panel-head">
+    <h2>Remarques</h2>
+    <p>Sélectionne un passage du texte, puis clique sur « Annoter ». Le bouton « Copier pour Claude » copie toutes les remarques, prêtes à coller dans la session.</p>
+    <div class="panel-actions">
+      <button class="btn" id="add-general">Remarque sur ce document</button>
+      <button class="btn ghost danger" id="clear-all">Tout effacer</button>
+    </div>
+  </div>
+  <div class="panel-body" id="remark-list"></div>
+</aside>
+
+<button class="float-btn" id="float-btn">Annoter</button>
+<div class="popover" id="popover">
+  <div class="quote" id="pop-quote"></div>
+  <textarea id="pop-text" placeholder="Ta remarque sur ce passage"></textarea>
+  <div class="hint">⌘ Entrée enregistre la remarque. Échap ferme la fenêtre sans enregistrer.</div>
+  <div class="row">
+    <button class="btn ghost" id="pop-cancel">Annuler</button>
+    <button class="btn primary" id="pop-save">Enregistrer</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>/*__MARKED__*/</script>
+<script type="application/json" id="docs-data">__DOCS_JSON__</script>
+<script>
+(function () {
+  "use strict";
+
+  const docs = JSON.parse(document.getElementById("docs-data").textContent);
+  const STORE_KEY = "lire:remarks:v1";
+  const BLOCKS = "p,li,h1,h2,h3,h4,h5,h6,td,th,pre,blockquote,dt,dd,figcaption";
+  const hasHighlights = typeof CSS !== "undefined" && CSS.highlights && typeof Highlight !== "undefined";
+
+  const $ = (id) => document.getElementById(id);
+  const state = { current: 0, remarks: loadRemarks(), pending: null, editingId: null, activeId: null };
+
+  // ---------- Stockage local ----------
+  function loadRemarks() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveRemarks() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state.remarks)); } catch (e) { /* stockage indisponible */ }
+  }
+  function remarksFor(doc) { return state.remarks[doc.path] || (state.remarks[doc.path] = []); }
+  function allRemarkCount() { return docs.reduce((n, d) => n + (state.remarks[d.path] || []).length, 0); }
+  function saveScroll() {
+    try { localStorage.setItem("lire:scroll:" + docs[state.current].path, String($("main").scrollTop)); } catch (e) {}
+  }
+  function loadScroll(doc) {
+    try { return Number(localStorage.getItem("lire:scroll:" + doc.path)) || 0; } catch (e) { return 0; }
+  }
+
+  // ---------- Rendu des documents ----------
+  marked.setOptions({ gfm: true, breaks: false });
+
+  function slugify(text) {
+    return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "section";
+  }
+
+  docs.forEach((doc, i) => {
+    const article = document.createElement("article");
+    article.innerHTML = marked.parse(doc.content);
+    article.hidden = i !== 0;
+    article.dataset.index = i;
+
+    const used = {};
+    doc.headings = [];
+    article.querySelectorAll("h1,h2,h3,h4").forEach((h) => {
+      let id = "d" + i + "-" + slugify(h.textContent);
+      if (used[id]) { used[id] += 1; id += "-" + used[id]; } else { used[id] = 1; }
+      h.id = id;
+      doc.headings.push({ id, level: Number(h.tagName[1]), text: h.textContent, el: h });
+    });
+
+    article.querySelectorAll("table").forEach((t) => {
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      t.parentNode.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    });
+
+    article.querySelectorAll("a[href]").forEach((a) => {
+      const href = a.getAttribute("href");
+      if (/^(https?:|mailto:|#)/.test(href)) { if (!href.startsWith("#")) a.target = "_blank"; return; }
+      const target = href.startsWith("/") ? href : doc.folder + "/" + href;
+      const clean = target.split("#")[0];
+      const other = docs.findIndex((d) => d.path === normalizePath(clean));
+      if (other >= 0) {
+        a.addEventListener("click", (ev) => { ev.preventDefault(); showDoc(other); });
+      } else {
+        a.href = "file://" + encodeURI(target);
+        a.target = "_blank";
+      }
+    });
+
+    const text = article.textContent;
+    doc.words = (text.match(/[\p{L}\p{N}’'-]+/gu) || []).length;
+    doc.article = article;
+    $("articles").appendChild(article);
+    doc.index = buildIndex(article);
+  });
+
+  function normalizePath(p) {
+    const parts = [];
+    p.split("/").forEach((s) => {
+      if (s === "..") parts.pop(); else if (s && s !== ".") parts.push(s);
+    });
+    return "/" + parts.join("/");
+  }
+
+  // ---------- Index du texte : position d'un passage dans le document ----------
+  function buildIndex(article) {
+    const segments = [];
+    let full = "";
+    let lastBlock = null;
+    const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (!node.nodeValue) continue;
+      const block = node.parentElement.closest(BLOCKS);
+      if (lastBlock && block !== lastBlock && full && !full.endsWith("\n")) full += "\n";
+      lastBlock = block;
+      segments.push({ node, start: full.length, end: full.length + node.nodeValue.length });
+      full += node.nodeValue;
+    }
+    return { segments, full };
+  }
+
+  function pointToOffset(index, container, offset, isEnd) {
+    if (container.nodeType === Node.TEXT_NODE) {
+      const seg = index.segments.find((s) => s.node === container);
+      if (seg) return seg.start + offset;
+    }
+    const probe = document.createRange();
+    probe.setStart(container, offset);
+    if (!isEnd) {
+      for (const s of index.segments) if (probe.comparePoint(s.node, 0) >= 0) return s.start;
+      return index.full.length;
+    }
+    let last = 0;
+    for (const s of index.segments) {
+      if (probe.comparePoint(s.node, s.node.nodeValue.length) <= 0) last = s.end; else break;
+    }
+    return last;
+  }
+
+  function offsetsToRange(index, start, end) {
+    const segs = index.segments;
+    const a = segs.find((s) => start < s.end) ;
+    let b = null;
+    for (const s of segs) if (end > s.start) b = s;
+    if (!a || !b) return null;
+    const r = document.createRange();
+    r.setStart(a.node, Math.max(0, start - a.start));
+    r.setEnd(b.node, Math.min(b.node.nodeValue.length, end - b.start));
+    return r;
+  }
+
+  function nthIndexOf(hay, needle, n) {
+    let pos = -1;
+    for (let i = 0; i <= n; i++) { pos = hay.indexOf(needle, pos + 1); if (pos < 0) return -1; }
+    return pos;
+  }
+
+  function countBefore(hay, needle, limit) {
+    let n = 0, pos = hay.indexOf(needle);
+    while (pos >= 0 && pos < limit) { n++; pos = hay.indexOf(needle, pos + 1); }
+    return n;
+  }
+
+  function locate(doc, remark) {
+    if (!remark.quote) return null;
+    const full = doc.index.full;
+    let pos = nthIndexOf(full, remark.quote, remark.occ || 0);
+    if (pos < 0) pos = full.indexOf(remark.quote);
+    if (pos < 0) return null;
+    return offsetsToRange(doc.index, pos, pos + remark.quote.length);
+  }
+
+  function sectionOf(doc, range) {
+    let found = null;
+    for (const h of doc.headings) {
+      const cmp = range.comparePoint(h.el, 0);
+      if (cmp <= 0) found = h; else break;
+    }
+    return found ? found.text : null;
+  }
+
+  // ---------- Surlignage ----------
+  function refreshHighlights() {
+    if (!hasHighlights) return;
+    const doc = docs[state.current];
+    const normal = [], active = [];
+    for (const r of remarksFor(doc)) {
+      const range = locate(doc, r);
+      if (!range) continue;
+      (r.id === state.activeId ? active : normal).push(range);
+    }
+    CSS.highlights.set("remark", new Highlight(...normal));
+    CSS.highlights.set("remark-active", new Highlight(...active));
+  }
+
+  // ---------- Navigation entre documents ----------
+  function renderDocList() {
+    const list = $("doc-list");
+    list.innerHTML = "";
+    docs.forEach((doc, i) => {
+      const n = (state.remarks[doc.path] || []).length;
+      const b = document.createElement("button");
+      b.className = "doc-tab" + (i === state.current ? " active" : "");
+      b.innerHTML = '<div class="name"><span></span>' + (n ? '<span class="badge">' + n + "</span>" : "") +
+        '</div><div class="meta"></div>';
+      b.querySelector(".name span").textContent = doc.name;
+      b.querySelector(".meta").textContent = formatNumber(doc.words) + " mots";
+      b.addEventListener("click", () => { showDoc(i); document.body.classList.remove("side-open"); });
+      list.appendChild(b);
+    });
+  }
+
+  function renderToc() {
+    const toc = $("toc");
+    const doc = docs[state.current];
+    const items = doc.headings.filter((h) => h.level === 2 || h.level === 3);
+    toc.innerHTML = items.length ? "<h2>Sommaire</h2>" : "";
+    items.forEach((h) => {
+      const a = document.createElement("a");
+      a.href = "#" + h.id;
+      a.className = "lvl-" + h.level;
+      a.textContent = h.text;
+      a.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        h.el.scrollIntoView({ behavior: "smooth", block: "start" });
+        document.body.classList.remove("side-open");
+      });
+      toc.appendChild(a);
+      h.link = a;
+    });
+  }
+
+  function updateCurrentSection() {
+    const doc = docs[state.current];
+    const top = $("main").getBoundingClientRect().top + 90;
+    let current = null;
+    for (const h of doc.headings) {
+      if (!h.link) continue;
+      if (h.el.getBoundingClientRect().top <= top) current = h; else break;
+    }
+    doc.headings.forEach((h) => h.link && h.link.classList.toggle("current", h === current));
+  }
+
+  function showDoc(i) {
+    saveScroll();
+    hideFloating();
+    state.current = i;
+    state.activeId = null;
+    docs.forEach((d, j) => { d.article.hidden = j !== i; });
+    const doc = docs[i];
+    $("doc-file").textContent = doc.name;
+    $("doc-info").textContent = doc.folder + " · modifié le " + doc.modified + " · " +
+      formatNumber(doc.words) + " mots, environ " + Math.max(1, Math.round(doc.words / 230)) + " min de lecture";
+    document.title = doc.name + " · Lecture";
+    renderDocList();
+    renderToc();
+    refreshHighlights();
+    const main = $("main");
+    main.style.scrollBehavior = "auto";
+    main.scrollTop = loadScroll(doc);
+    main.style.scrollBehavior = "";
+    updateCurrentSection();
+  }
+
+  // ---------- Liste des remarques ----------
+  function renderRemarks() {
+    const list = $("remark-list");
+    list.innerHTML = "";
+    const total = allRemarkCount();
+    $("count-top").textContent = total;
+    if (!total) {
+      list.innerHTML = '<div class="empty">Aucune remarque pour l\'instant.</div>';
+      renderDocList();
+      return;
+    }
+    docs.forEach((doc, di) => {
+      const items = state.remarks[doc.path] || [];
+      if (!items.length) return;
+      const title = document.createElement("div");
+      title.className = "group-title";
+      title.textContent = doc.name;
+      list.appendChild(title);
+      items.forEach((r) => list.appendChild(renderRemark(doc, di, r)));
+    });
+    renderDocList();
+  }
+
+  function renderRemark(doc, di, r) {
+    const box = document.createElement("div");
+    box.className = "remark" + (r.id === state.activeId ? " active" : "");
+    box.dataset.id = r.id;
+
+    const where = document.createElement("div");
+    where.className = "where";
+    const label = document.createElement("span");
+    label.textContent = r.quote ? (r.section || "Début du document") : "Sur tout le document";
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "Supprimer";
+    del.addEventListener("click", () => deleteRemark(doc, r.id));
+    where.append(label, del);
+    box.appendChild(where);
+
+    if (r.quote) {
+      const q = document.createElement("div");
+      const found = !!locate(doc, r);
+      q.className = "quote" + (found ? "" : " orphan");
+      q.textContent = found ? r.quote : r.quote + " (passage introuvable dans la version actuelle)";
+      q.addEventListener("click", () => focusRemark(di, r.id));
+      box.appendChild(q);
+    }
+
+    const ta = document.createElement("textarea");
+    ta.value = r.comment;
+    ta.placeholder = "Ta remarque";
+    ta.rows = 1;
+    const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
+    ta.addEventListener("input", () => { r.comment = ta.value; saveRemarks(); fit(); });
+    requestAnimationFrame(fit);
+    box.appendChild(ta);
+    return box;
+  }
+
+  function focusRemark(di, id) {
+    if (state.current !== di) showDoc(di);
+    state.activeId = id;
+    refreshHighlights();
+    const doc = docs[di];
+    const r = remarksFor(doc).find((x) => x.id === id);
+    const range = r && locate(doc, r);
+    if (range) {
+      const el = range.startContainer.parentElement;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    document.querySelectorAll(".remark").forEach((b) => b.classList.toggle("active", b.dataset.id === id));
+  }
+
+  function deleteRemark(doc, id) {
+    state.remarks[doc.path] = remarksFor(doc).filter((r) => r.id !== id);
+    if (state.activeId === id) state.activeId = null;
+    saveRemarks();
+    renderRemarks();
+    refreshHighlights();
+  }
+
+  // ---------- Sélection et annotation ----------
+  const floatBtn = $("float-btn");
+  const popover = $("popover");
+
+  function currentSelectionInfo() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    const doc = docs[state.current];
+    if (!doc.article.contains(range.commonAncestorContainer)) return null;
+    let start = pointToOffset(doc.index, range.startContainer, range.startOffset, false);
+    let end = pointToOffset(doc.index, range.endContainer, range.endOffset, true);
+    // Étend la sélection aux mots entiers, pour ne pas citer « Travai » au lieu de « Travail ».
+    const wordChar = /[\p{L}\p{N}’'_-]/u;
+    const full = doc.index.full;
+    while (start > 0 && wordChar.test(full[start - 1]) && wordChar.test(full[start])) start--;
+    while (end < full.length && wordChar.test(full[end]) && wordChar.test(full[end - 1])) end++;
+    let quote = full.slice(start, end);
+    const lead = quote.length - quote.trimStart().length;
+    quote = quote.trim();
+    if (!quote) return null;
+    const absStart = start + lead;
+    const exact = offsetsToRange(doc.index, absStart, absStart + quote.length) || range;
+    return {
+      quote,
+      occ: countBefore(full, quote, absStart),
+      section: sectionOf(doc, exact),
+      rect: range.getBoundingClientRect(),
+    };
+  }
+
+  function hideFloating() {
+    floatBtn.style.display = "none";
+    popover.style.display = "none";
+    state.pending = null;
+    state.editingId = null;
+  }
+
+  function placeNear(el, rect, below) {
+    el.style.display = "block";
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let left = rect.left + window.scrollX + rect.width / 2 - w / 2;
+    left = Math.max(16, Math.min(left, window.innerWidth - w - 16));
+    let top = below ? rect.bottom + window.scrollY + 10 : rect.top + window.scrollY - h - 10;
+    if (top < 64) top = rect.bottom + window.scrollY + 10;
+    if (top + h > window.innerHeight - 8) top = Math.max(64, window.innerHeight - h - 8);
+    el.style.left = left + "px";
+    el.style.top = top + "px";
+  }
+
+  document.addEventListener("mouseup", (ev) => {
+    if (popover.contains(ev.target) || floatBtn.contains(ev.target)) return;
+    setTimeout(() => {
+      const info = currentSelectionInfo();
+      if (!info) { if (popover.style.display !== "block") floatBtn.style.display = "none"; return; }
+      state.pending = info;
+      placeNear(floatBtn, info.rect, false);
+    }, 0);
+  });
+
+  floatBtn.addEventListener("mousedown", (ev) => ev.preventDefault());
+  floatBtn.addEventListener("click", () => {
+    if (!state.pending) return;
+    openPopover(state.pending.quote, "", state.pending.rect);
+  });
+
+  function openPopover(quote, text, rect) {
+    floatBtn.style.display = "none";
+    $("pop-quote").textContent = quote;
+    $("pop-quote").style.display = quote ? "block" : "none";
+    $("pop-text").value = text;
+    placeNear(popover, rect, true);
+    $("pop-text").focus();
+  }
+
+  function savePopover() {
+    const text = $("pop-text").value.trim();
+    const doc = docs[state.current];
+    if (state.editingId) {
+      const r = remarksFor(doc).find((x) => x.id === state.editingId);
+      if (r) r.comment = text;
+    } else if (state.pending) {
+      const r = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        quote: state.pending.quote, occ: state.pending.occ, section: state.pending.section,
+        comment: text, created: new Date().toISOString(),
+      };
+      remarksFor(doc).push(r);
+      sortRemarks(doc);
+      state.activeId = r.id;
+    } else if (state.general) {
+      if (!text) { state.general = false; hideFloating(); return; }
+      remarksFor(doc).unshift({
+        id: Date.now().toString(36), quote: null, comment: text, created: new Date().toISOString(),
+      });
+    }
+    $("pop-text").placeholder = "Ta remarque sur ce passage";
+    saveRemarks();
+    state.general = false;
+    hideFloating();
+    window.getSelection().removeAllRanges();
+    renderRemarks();
+    refreshHighlights();
+    toast("Remarque enregistrée");
+  }
+
+  function sortRemarks(doc) {
+    const pos = (r) => {
+      if (!r.quote) return -1;
+      const p = nthIndexOf(doc.index.full, r.quote, r.occ || 0);
+      return p < 0 ? Infinity : p;
+    };
+    remarksFor(doc).sort((a, b) => pos(a) - pos(b));
+  }
+
+  $("pop-save").addEventListener("click", savePopover);
+  $("pop-cancel").addEventListener("click", () => { state.general = false; hideFloating(); });
+  $("pop-text").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); savePopover(); }
+    if (ev.key === "Escape") { state.general = false; hideFloating(); }
+  });
+
+  // Clic sur un passage déjà surligné : ouvrir sa remarque.
+  $("articles").addEventListener("click", (ev) => {
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    let node, offset;
+    if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(ev.clientX, ev.clientY);
+      if (!r) return; node = r.startContainer; offset = r.startOffset;
+    } else if (document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(ev.clientX, ev.clientY);
+      if (!p) return; node = p.offsetNode; offset = p.offset;
+    } else return;
+    const doc = docs[state.current];
+    const hit = remarksFor(doc).find((r) => {
+      const range = locate(doc, r);
+      return range && range.isPointInRange(node, offset);
+    });
+    if (!hit) return;
+    state.activeId = hit.id;
+    refreshHighlights();
+    renderRemarks();
+    const range = locate(doc, hit);
+    state.editingId = hit.id;
+    state.pending = null;
+    openPopover(hit.quote, hit.comment, range.getBoundingClientRect());
+    document.body.classList.add("panel-open");
+    const box = document.querySelector('.remark[data-id="' + hit.id + '"]');
+    if (box) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+
+  $("add-general").addEventListener("click", () => {
+    state.pending = null;
+    state.editingId = null;
+    state.general = true;
+    const rect = $("add-general").getBoundingClientRect();
+    openPopover("", "", rect);
+    $("pop-text").placeholder = "Ta remarque sur tout le document " + docs[state.current].name;
+  });
+
+  // ---------- Copie pour Claude ----------
+  function shorten(q) {
+    const flat = q.replace(/\s*\n\s*/g, " / ").replace(/\s+/g, " ");
+    return flat.length <= 420 ? flat : flat.slice(0, 220) + " […] " + flat.slice(-160);
+  }
+
+  function buildExport() {
+    const today = new Date().toLocaleDateString("fr-FR");
+    const lines = [
+      "Voici mes remarques de lecture du " + today + ".",
+      "Chaque passage est cité tel qu'il s'affiche à l'écran, sans les signes de mise en forme du Markdown. Le signe « / » marque un changement de paragraphe.",
+      "",
+    ];
+    let n = 0;
+    docs.forEach((doc) => {
+      const items = (state.remarks[doc.path] || []).filter((r) => r.comment.trim() || r.quote);
+      if (!items.length) return;
+      lines.push("## " + doc.name, "Fichier : " + doc.path, "");
+      items.forEach((r, i) => {
+        n++;
+        if (r.quote) {
+          lines.push((i + 1) + ". Section : " + (r.section ? "« " + r.section + " »" : "début du document"));
+          lines.push("   Passage : « " + shorten(r.quote) + " »");
+          lines.push("   Remarque : " + (r.comment.trim() || "(passage surligné, sans commentaire)").replace(/\n/g, "\n   "));
+        } else {
+          lines.push((i + 1) + ". Sur tout le document : " + r.comment.trim().replace(/\n/g, "\n   "));
+        }
+        lines.push("");
+      });
+    });
+    return { text: lines.join("\n").trim() + "\n", count: n };
+  }
+
+  async function copyExport() {
+    const { text, count } = buildExport();
+    if (!count) { toast("Aucune remarque à copier"); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    toast(count + (count > 1 ? " remarques copiées" : " remarque copiée") + ", colle-les dans la session");
+  }
+
+  $("copy-top").addEventListener("click", copyExport);
+
+  let clearTimer = null;
+  $("clear-all").addEventListener("click", () => {
+    const b = $("clear-all");
+    if (!b.dataset.armed) {
+      b.dataset.armed = "1";
+      b.textContent = "Confirmer l'effacement";
+      clearTimer = setTimeout(() => { delete b.dataset.armed; b.textContent = "Tout effacer"; }, 4000);
+      return;
+    }
+    clearTimeout(clearTimer);
+    delete b.dataset.armed;
+    b.textContent = "Tout effacer";
+    docs.forEach((d) => { delete state.remarks[d.path]; });
+    state.activeId = null;
+    saveRemarks();
+    renderRemarks();
+    refreshHighlights();
+    toast("Remarques effacées");
+  });
+
+  // ---------- Divers ----------
+  function formatNumber(n) { return n.toLocaleString("fr-FR"); }
+
+  let toastTimer = null;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  $("toggle-side").addEventListener("click", () => document.body.classList.toggle("side-open"));
+  $("toggle-panel").addEventListener("click", () => document.body.classList.toggle("panel-open"));
+  $("main").addEventListener("scroll", () => {
+    hideFloatingIfIdle();
+    updateCurrentSection();
+  }, { passive: true });
+  function hideFloatingIfIdle() { if (popover.style.display !== "block") floatBtn.style.display = "none"; }
+  window.addEventListener("beforeunload", saveScroll);
+
+  $("brand-sub").textContent = docs.length > 1 ? docs.length + " documents" : "";
+  docs.forEach(sortRemarks);
+  renderRemarks();
+  showDoc(0);
+  if (!hasHighlights) toast("Ce navigateur ne surligne pas les passages, les remarques restent dans le panneau");
+})();
+</script>
+</body>
+</html>

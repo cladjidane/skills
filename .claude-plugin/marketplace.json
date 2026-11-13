@@ -1,0 +1,8 @@
+{
+  "name": "fc",
+  "description": "Skills publiques de Fabien Canu, pour Claude Code et Codex.",
+  "owner": { "name": "Fabien Canu" },
+  "plugins": [
+    { "name": "fc", "source": "./", "description": "Skills publiques de Fabien Canu, pour Claude Code et Codex." }
+  ]
+}
